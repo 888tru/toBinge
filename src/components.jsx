@@ -1,7 +1,7 @@
 import { T } from './tokens.js';
 import { I } from './icons.jsx';
 
-export const SHELL_TOP    = 56;
+export const SHELL_TOP    = 0;
 export const NAV_HEIGHT   = 70;
 export const HOME_IND     = 34;
 

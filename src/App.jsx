@@ -482,7 +482,9 @@ export default function App() {
   return (
     <div style={{
       width: '100%', maxWidth: 430,
-      height: '100%',
+      height: '100dvh',
+      paddingTop: 'env(safe-area-inset-top)',
+      boxSizing: 'border-box',
       position: 'relative', overflow: 'hidden',
       background: T.bg,
     }}>
