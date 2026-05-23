@@ -1,3 +1,4 @@
+import React from 'react';
 import { T } from './tokens.js';
 import { I } from './icons.jsx';
 import {
@@ -563,9 +564,12 @@ export function ScreenDictation({ card, idx, total, input, onInput, onCheck, res
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SCREEN 9 · PROGRESS
+// SCREEN 9 · PROGRESS (real data)
 // ═══════════════════════════════════════════════════════════════
-export function ScreenProgress({ streak = 7, days30, weak, levels }) {
+export function ScreenProgress({ streak = 0, days30 = [], levels = [], allCards = [] }) {
+  const totalCards = allCards.length;
+  const chart = days30.length ? days30 : Array(7).fill(0);
+
   return (
     <Shell>
       <Header title="Прогресс" />
@@ -577,17 +581,19 @@ export function ScreenProgress({ streak = 7, days30, weak, levels }) {
           padding: '20px', display: 'flex', flexDirection: 'column', gap: 18,
         }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-            <div style={{ fontSize: 56, fontWeight: 700, color: T.accent, lineHeight: 1, fontFamily: T.mono, letterSpacing: '-0.04em' }}>{streak}</div>
+            <div style={{ fontSize: 56, fontWeight: 700, color: streak ? T.accent : T.textFaint, lineHeight: 1, fontFamily: T.mono, letterSpacing: '-0.04em' }}>
+              {streak}
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{ fontSize: 14, color: T.text, fontWeight: 500 }}>дней подряд</div>
-              <div style={{ fontSize: 12, color: T.textDim }}>лучший: 14</div>
+              <div style={{ fontSize: 12, color: T.textDim }}>{streak ? 'Продолжай!' : 'Позанимайся сегодня'}</div>
             </div>
             <div style={{ flex: 1 }} />
-            <div style={{ fontSize: 24 }}>🔥</div>
+            <div style={{ fontSize: 24 }}>{streak >= 3 ? '🔥' : '📚'}</div>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {Array.from({ length: 7 }).map((_, i) => {
-              const filled = i < streak;
+              const filled = i < Math.min(streak, 7);
               const label  = ['П','В','С','Ч','П','С','В'][i];
               return (
                 <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}>
@@ -607,11 +613,13 @@ export function ScreenProgress({ streak = 7, days30, weak, levels }) {
         <div>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
             <Eyebrow>30 дней</Eyebrow>
-            <span style={{ fontSize: 11, color: T.textDim, fontFamily: T.mono }}>{days30.reduce((a, b) => a + b, 0)} карточек</span>
+            <span style={{ fontSize: 11, color: T.textDim, fontFamily: T.mono }}>
+              {chart.reduce((a, b) => a + b, 0)} карточек
+            </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 78, padding: '0 0 4px' }}>
-            {days30.map((v, i) => {
-              const max = Math.max(...days30, 1);
+            {chart.map((v, i) => {
+              const max = Math.max(...chart, 1);
               const h   = Math.max(2, (v / max) * 72);
               return (
                 <div key={i} style={{
@@ -624,53 +632,303 @@ export function ScreenProgress({ streak = 7, days30, weak, levels }) {
           </div>
         </div>
 
-        {/* weak spots */}
-        <div>
-          <Eyebrow style={{ marginBottom: 12 }}>Слабые места</Eyebrow>
-          <div style={{ background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard, overflow: 'hidden' }}>
-            {weak.map((w, i) => (
-              <div key={w.word} style={{
-                padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12,
-                borderBottom: i < weak.length - 1 ? `1px solid ${T.border}` : 'none',
-              }}>
-                <span style={{ fontSize: 14, fontWeight: 500, color: T.text, flex: 1 }}>{w.word}</span>
-                <span style={{
-                  fontSize: 11, color: T.red, fontFamily: T.mono,
-                  padding: '3px 8px', borderRadius: 4, background: T.redDim,
-                }}>×{w.misses}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
         {/* levels */}
-        <div>
-          <Eyebrow style={{ marginBottom: 12 }}>Уровни</Eyebrow>
-          <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: T.surface1, marginBottom: 12 }}>
-            {levels.map((l, i) => (
-              <div key={l.id} style={{
-                flex: l.count, background: levelColor(l.id),
-                borderRight: i < levels.length - 1 ? '2px solid #0f0f0f' : 0,
-              }} />
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {levels.map(l => (
-              <div key={l.id} style={{
-                flex: 1, padding: '10px', borderRadius: T.rSmall,
-                background: T.surface1, border: `1px solid ${T.border}`,
-                display: 'flex', flexDirection: 'column', gap: 6,
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: levelColor(l.id) }} />
-                  <span style={{ fontSize: 10, color: T.textDim, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 500 }}>{l.label}</span>
+        {totalCards > 0 ? (
+          <div>
+            <Eyebrow style={{ marginBottom: 12 }}>Уровни · {totalCards} карточек</Eyebrow>
+            <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: T.surface1, marginBottom: 12 }}>
+              {levels.filter(l => l.count > 0).map((l, i, arr) => (
+                <div key={l.id} style={{
+                  flex: l.count, background: levelColor(l.id),
+                  borderRight: i < arr.length - 1 ? '2px solid #0f0f0f' : 0,
+                }} />
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {levels.map(l => (
+                <div key={l.id} style={{
+                  flex: 1, padding: '10px', borderRadius: T.rSmall,
+                  background: T.surface1, border: `1px solid ${T.border}`,
+                  display: 'flex', flexDirection: 'column', gap: 6,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: levelColor(l.id) }} />
+                    <span style={{ fontSize: 10, color: T.textDim, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 500 }}>{l.label}</span>
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 600, color: T.text, fontFamily: T.mono }}>{l.count}</div>
                 </div>
-                <div style={{ fontSize: 18, fontWeight: 600, color: T.text, fontFamily: T.mono }}>{l.count}</div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div style={{
+            padding: '40px 24px', background: T.surface1, border: `1px solid ${T.border}`,
+            borderRadius: T.rCard, textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 10,
+          }}>
+            <div style={{ color: T.textFaint }}>{I.book(36)}</div>
+            <div style={{ fontSize: 14, color: T.textDim }}>Добавь карточки, чтобы видеть статистику</div>
+          </div>
+        )}
       </div>
     </Shell>
   );
 }
+
+// ═══════════════════════════════════════════════════════════════
+// SCREEN 10 · NEW BOARD
+// ═══════════════════════════════════════════════════════════════
+const BOARD_COLORS = ['#d4f564', '#5b8def', '#ff9f43', '#e879f9', '#ff5757', '#64c8f5'];
+
+export function ScreenNewBoard({ form, onChange, onSave, onBack }) {
+  return (
+    <Shell withNav={false}>
+      <Header back onBack={onBack} title="Новая доска" />
+
+      <div style={{ padding: '4px 20px 24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+        {/* name */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Eyebrow>Название</Eyebrow>
+          <input
+            value={form.name || ''}
+            onChange={e => onChange('name', e.target.value)}
+            placeholder="Например: Сериал Severance"
+            autoFocus
+            style={{
+              background: T.surface1, border: `1px solid ${T.borderStrong}`,
+              borderRadius: T.rCard, padding: '18px 18px', color: T.text,
+              fontFamily: T.sans, fontSize: 22, fontWeight: 600,
+              outline: 'none', boxSizing: 'border-box', width: '100%',
+            }}
+          />
+        </div>
+
+        {/* color */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Eyebrow>Цвет</Eyebrow>
+          <div style={{ display: 'flex', gap: 12 }}>
+            {BOARD_COLORS.map(c => (
+              <button key={c} onClick={() => onChange('color', c)} style={{
+                width: 40, height: 40, borderRadius: '50%', background: c,
+                border: form.color === c ? `3px solid ${T.text}` : '3px solid transparent',
+                cursor: 'pointer', flexShrink: 0,
+                boxShadow: form.color === c ? `0 0 0 2px ${T.bg}, 0 0 0 4px ${c}` : 'none',
+                transition: 'box-shadow .15s',
+              }} />
+            ))}
+          </div>
+        </div>
+
+        {/* preview */}
+        {form.name && (
+          <div style={{
+            padding: '18px 18px 22px', background: T.surface1,
+            border: `1px solid ${T.border}`, borderRadius: T.rCard,
+            display: 'flex', flexDirection: 'column', gap: 6, position: 'relative', overflow: 'hidden',
+          }}>
+            <div style={{ fontSize: 19, fontWeight: 600, letterSpacing: '-0.01em' }}>{form.name}</div>
+            <div style={{ fontSize: 13, color: T.textDim }}>0 карточек · 0 сегодня</div>
+            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 3, background: form.color }} />
+          </div>
+        )}
+      </div>
+
+      <div style={{
+        position: 'absolute', left: 0, right: 0, bottom: 0,
+        padding: '14px 20px', paddingBottom: HOME_IND + 14,
+        background: 'linear-gradient(to top, #0f0f0f 60%, rgba(15,15,15,0))',
+      }}>
+        <button onClick={onSave} disabled={!form.name?.trim()} style={{
+          width: '100%', padding: '16px', borderRadius: T.rPill,
+          background: form.name?.trim() ? T.accent : T.surface2,
+          color: form.name?.trim() ? '#0f0f0f' : T.textFaint, border: 0,
+          fontFamily: T.sans, fontSize: 15, fontWeight: 600,
+          cursor: form.name?.trim() ? 'pointer' : 'default',
+        }}>Создать доску</button>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SCREEN 11 · CARD DETAIL / EDIT
+// ═══════════════════════════════════════════════════════════════
+export function ScreenCardDetail({ card, onBack, onSave, onDelete }) {
+  const { useState: useS } = React;
+  const [form, setForm] = useS(() => card ? { ...card } : {});
+  const [focus, setFocus] = useS(null);
+  const [confirmDelete, setConfirmDelete] = useS(false);
+
+  if (!card) return null;
+
+  const field = (key, label, opts = {}) => {
+    const focused = focus === key;
+    const base = {
+      background: T.surface1,
+      border: `1px solid ${focused ? T.accent : T.border}`,
+      borderRadius: T.rCard, color: T.text, fontFamily: T.sans,
+      outline: 'none', boxSizing: 'border-box', transition: 'border-color .15s',
+    };
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <Eyebrow>
+          {label}
+          {opts.optional && <span style={{ marginLeft: 6, color: T.textFaint, fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 11 }}>необязательное</span>}
+        </Eyebrow>
+        {opts.multi ? (
+          <textarea value={form[key] || ''} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+            onFocus={() => setFocus(key)} onBlur={() => setFocus(null)}
+            style={{ ...base, padding: '14px 16px', fontSize: 15, minHeight: 80, resize: 'vertical' }} />
+        ) : (
+          <input value={form[key] || ''} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+            onFocus={() => setFocus(key)} onBlur={() => setFocus(null)}
+            style={{ ...base, padding: opts.big ? '18px' : '14px 16px', fontSize: opts.big ? 22 : 15, fontWeight: opts.big ? 600 : 400, width: '100%' }} />
+        )}
+      </div>
+    );
+  };
+
+  const levelLabels = { new: 'Учу', learning: 'Знакомо', know: 'Знаю', master: 'Владею' };
+
+  return (
+    <Shell withNav={false}>
+      <Header back onBack={onBack} title="Карточка"
+        trailing={
+          <button onClick={() => setConfirmDelete(true)} style={{
+            background: 'transparent', border: `1px solid ${T.border}`, borderRadius: 10,
+            width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: T.red, cursor: 'pointer',
+          }}>{I.x(16, T.red)}</button>
+        }
+      />
+
+      <div style={{ padding: '4px 20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {/* level badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: levelColor(card.level) }} />
+          <span style={{ fontSize: 12, color: T.textDim }}>{levelLabels[card.level] || 'Учу'}</span>
+        </div>
+
+        {field('word',        'Слово',                { big: true })}
+        {field('definition',  'Определение',           { multi: true })}
+        {field('translation', 'Перевод',               { optional: true })}
+        {field('example',     'Пример использования',  { multi: true, optional: true })}
+      </div>
+
+      {/* confirm delete overlay */}
+      {confirmDelete && (
+        <div style={{
+          position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'flex-end', zIndex: 60,
+        }}>
+          <div style={{
+            width: '100%', background: T.surface1,
+            borderRadius: `${T.rCard}px ${T.rCard}px 0 0`,
+            padding: '24px 20px', paddingBottom: HOME_IND + 20,
+            display: 'flex', flexDirection: 'column', gap: 12,
+          }}>
+            <div style={{ fontSize: 16, fontWeight: 600, color: T.text }}>Удалить карточку?</div>
+            <div style={{ fontSize: 13, color: T.textDim }}>«{card.word}» — это действие нельзя отменить.</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+              <button onClick={() => onDelete(card.id)} style={{
+                padding: '14px', borderRadius: T.rPill,
+                background: T.red, color: '#fff', border: 0,
+                fontFamily: T.sans, fontSize: 15, fontWeight: 600, cursor: 'pointer',
+              }}>Удалить</button>
+              <button onClick={() => setConfirmDelete(false)} style={{
+                padding: '14px', borderRadius: T.rPill,
+                background: T.surface2, color: T.text, border: 0,
+                fontFamily: T.sans, fontSize: 15, fontWeight: 500, cursor: 'pointer',
+              }}>Отмена</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{
+        position: 'absolute', left: 0, right: 0, bottom: 0,
+        padding: '14px 20px', paddingBottom: HOME_IND + 14,
+        background: 'linear-gradient(to top, #0f0f0f 60%, rgba(15,15,15,0))',
+      }}>
+        <button onClick={() => onSave(form)} style={{
+          width: '100%', padding: '16px', borderRadius: T.rPill,
+          background: T.accent, color: '#0f0f0f', border: 0,
+          fontFamily: T.sans, fontSize: 15, fontWeight: 600, cursor: 'pointer',
+        }}>Сохранить изменения</button>
+      </div>
+    </Shell>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SCREEN 12 · STUDY CHOICE (4 варианта)
+// ═══════════════════════════════════════════════════════════════
+export function ScreenStudyChoice({ card, idx, total, deck, result, onPick, onBack }) {
+  const { useMemo, useState: useS } = React;
+
+  const choices = useMemo(() => {
+    const others = deck
+      .filter(c => c.id !== card.id)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 3)
+      .map(c => c.word);
+    const all = [...others, card.word];
+    // Fisher-Yates shuffle
+    for (let i = all.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [all[i], all[j]] = [all[j], all[i]];
+    }
+    return all;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.id]);
+
+  const getChoiceStyle = (word) => {
+    if (!result) return { border: `1.5px solid ${T.border}`, background: T.surface1, color: T.text };
+    if (word === card.word) return { border: `1.5px solid ${T.green}`, background: T.accentDim, color: T.text };
+    if (result === 'wrong') return { border: `1.5px solid ${T.border}`, background: T.surface1, color: T.textDim };
+    return { border: `1.5px solid ${T.border}`, background: T.surface1, color: T.text };
+  };
+
+  return (
+    <Shell withNav={false} padBottom={false}>
+      <StudyHeader idx={idx} total={total} onBack={onBack} />
+
+      <div style={{ padding: '16px 20px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* definition card */}
+        <div style={{
+          background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard,
+          padding: '24px 22px', display: 'flex', flexDirection: 'column', gap: 12,
+        }}>
+          <Eyebrow color={T.accent}>выбери слово</Eyebrow>
+          <div style={{ fontSize: 16, color: T.text, lineHeight: 1.45 }}>{card.definition}</div>
+          {card.translation && (
+            <div style={{ fontSize: 13, color: T.textDim, paddingTop: 6, borderTop: `1px solid ${T.border}` }}>
+              {card.translation}
+            </div>
+          )}
+        </div>
+
+        {/* 4 choices */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {choices.map(word => (
+            <button key={word} onClick={() => onPick(word)} disabled={!!result} style={{
+              ...getChoiceStyle(word),
+              padding: '16px 20px', borderRadius: T.rPill,
+              fontFamily: T.sans, fontSize: 15, fontWeight: 500,
+              cursor: result ? 'default' : 'pointer', textAlign: 'left',
+              transition: 'background .2s, border-color .2s',
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              {result && word === card.word && (
+                <span style={{ color: T.green, flexShrink: 0 }}>{I.check(16, T.green)}</span>
+              )}
+              {word}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ height: HOME_IND + 12 }} />
+    </Shell>
+  );
+}
+

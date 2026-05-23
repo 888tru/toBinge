@@ -1,53 +1,115 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { T } from './tokens.js';
-import { CustomNav, Toast, NAV_HEIGHT, HOME_IND } from './components.jsx';
+import { CustomNav, Toast, HOME_IND } from './components.jsx';
 import { usePWA } from './usePWA.js';
 import { InstallBanner, UpdateBanner } from './PWABanners.jsx';
 import {
-  SAMPLE_BOARDS, SAMPLE_CARDS, SAMPLE_DRAFT,
-  SAMPLE_DAYS30, SAMPLE_WEAK, SAMPLE_LEVELS,
-} from './data.js';
-import {
-  ScreenHome, ScreenBoard, ScreenImport, ScreenNewCard,
-  ScreenModePick, ScreenStudyFront, ScreenStudyBack,
-  ScreenDictation, ScreenProgress,
+  ScreenHome, ScreenBoard, ScreenImport, ScreenNewCard, ScreenCardDetail,
+  ScreenNewBoard, ScreenModePick, ScreenStudyFront, ScreenStudyBack,
+  ScreenDictation, ScreenStudyChoice, ScreenProgress,
 } from './screens.jsx';
+
+// ── localStorage persistence ─────────────────────────────────────
+function loadBoards() {
+  try {
+    const raw = localStorage.getItem('tobinge-boards');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+function saveBoards(boards) {
+  localStorage.setItem('tobinge-boards', JSON.stringify(boards));
+}
+
+// ── Streak tracking ──────────────────────────────────────────────
+function loadStreak() {
+  try {
+    return JSON.parse(localStorage.getItem('tobinge-streak') || '{"count":0,"lastDate":null,"days30":[]}');
+  } catch {
+    return { count: 0, lastDate: null, days30: [] };
+  }
+}
+function recordStudySession(cardsStudied) {
+  const today = new Date().toISOString().slice(0, 10);
+  const prev  = loadStreak();
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+  let count = prev.count;
+  if (prev.lastDate === today) {
+    // уже занимался сегодня — просто обновляем количество
+  } else if (prev.lastDate === yesterday) {
+    count += 1;
+  } else {
+    count = 1;
+  }
+
+  // 30-дневный массив: последний элемент = сегодня
+  const days30 = [...(prev.days30 || [])];
+  if (prev.lastDate === today) {
+    days30[days30.length - 1] = (days30[days30.length - 1] || 0) + cardsStudied;
+  } else {
+    const gap = prev.lastDate
+      ? Math.min(30, Math.round((new Date(today) - new Date(prev.lastDate)) / 86400000) - 1)
+      : 0;
+    for (let i = 0; i < gap; i++) days30.push(0);
+    days30.push(cardsStudied);
+    if (days30.length > 30) days30.splice(0, days30.length - 30);
+  }
+
+  const next = { count, lastDate: today, days30 };
+  localStorage.setItem('tobinge-streak', JSON.stringify(next));
+  return next;
+}
+
+// ── Generate unique id ───────────────────────────────────────────
+const uid = () => Math.random().toString(36).slice(2, 9);
 
 export default function App() {
   const { canInstall, triggerInstall, needRefresh, updateServiceWorker } = usePWA();
   const [installDismissed, setInstallDismissed] = useState(false);
   const [updateDismissed,  setUpdateDismissed]  = useState(false);
 
-  const [boards, setBoards] = useState(() =>
-    SAMPLE_BOARDS.map(b => ({ ...b, cards: b.id === 'b1' ? SAMPLE_CARDS : [] }))
-  );
+  // ── Core state ───────────────────────────────────────────────────
+  const [boards, setBoards] = useState(loadBoards);
+  const [streak, setStreak] = useState(loadStreak);
+
+  // Persist boards on every change
+  useEffect(() => { saveBoards(boards); }, [boards]);
+
   const [route,         setRoute]         = useState('home');
   const [navTab,        setNavTab]        = useState('boards');
-  const [activeBoardId, setActiveBoardId] = useState('b1');
+  const [activeBoardId, setActiveBoardId] = useState(null);
   const [boardTab,      setBoardTab]      = useState('words');
+  const [activeCardId,  setActiveCardId]  = useState(null);
 
-  // import
-  const [pasted,  setPasted]  = useState('');
-  const [draft,   setDraft]   = useState(SAMPLE_DRAFT);
-  const [copied,  setCopied]  = useState(null);
+  // ── Import ───────────────────────────────────────────────────────
+  const [pasted, setPasted] = useState('');
+  const [draft,  setDraft]  = useState([]);
+  const [copied, setCopied] = useState(null);
 
-  // new card form
+  // ── New / edit card form ─────────────────────────────────────────
   const [form,       setForm]       = useState({ word: '', definition: '', translation: '', example: '' });
   const [focusField, setFocusField] = useState(null);
 
-  // study setup
+  // ── New board form ───────────────────────────────────────────────
+  const [boardForm, setBoardForm] = useState({ name: '', color: '#d4f564' });
+
+  // ── Study setup ──────────────────────────────────────────────────
   const [duration, setDuration] = useState(15);
   const [mode,     setMode]     = useState('classic');
 
-  // study runtime
-  const [studyIdx,    setStudyIdx]    = useState(0);
-  const [studyFlipped,setStudyFlipped]= useState(false);
-  const [showTrans,   setShowTrans]   = useState(false);
-  const [showEx,      setShowEx]      = useState(false);
-  const [dictInput,   setDictInput]   = useState('');
-  const [dictResult,  setDictResult]  = useState(null);
+  // ── Study runtime ────────────────────────────────────────────────
+  const [studyIdx,     setStudyIdx]     = useState(0);
+  const [studyFlipped, setStudyFlipped] = useState(false);
+  const [showTrans,    setShowTrans]    = useState(false);
+  const [showEx,       setShowEx]       = useState(false);
+  const [dictInput,    setDictInput]    = useState('');
+  const [dictResult,   setDictResult]   = useState(null);
+  const [choiceResult, setChoiceResult] = useState(null); // null | 'correct' | 'wrong'
+  const [sessionCards, setSessionCards] = useState(0);
 
-  // toast
+  // ── Toast ─────────────────────────────────────────────────────────
   const [toast, setToast] = useState(null);
   const showToast = (msg) => {
     setToast(msg);
@@ -55,54 +117,118 @@ export default function App() {
     showToast._t = setTimeout(() => setToast(null), 2200);
   };
 
+  // ── Nav sync ─────────────────────────────────────────────────────
   useEffect(() => {
-    const activeBoard = boards.find(b => b.id === activeBoardId) || boards[0];
-    if (navTab === 'progress') setRoute('progress');
-    if (navTab === 'boards')   setRoute('home');
-    if (navTab === 'study' && activeBoard) setRoute('modepick');
+    if (navTab === 'progress') { setRoute('progress'); return; }
+    if (navTab === 'boards')   { setRoute('home');     return; }
+    if (navTab === 'study') {
+      if (!activeBoard) { showToast('Сначала создай доску'); setNavTab('boards'); return; }
+      if (!activeBoard.cards?.length) { showToast('Добавь карточки в доску'); setNavTab('boards'); return; }
+      setRoute('modepick');
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navTab]);
 
-  const activeBoard = boards.find(b => b.id === activeBoardId) || boards[0];
-  const studyDeck   = (activeBoard?.cards || [])
-    .filter(c => c.type === (boardTab === 'words' ? 'word' : 'phrase'))
-    .slice(0, 12);
-  const studyCard   = studyDeck[studyIdx] || studyDeck[0];
+  // ── Derived ──────────────────────────────────────────────────────
+  const activeBoard = boards.find(b => b.id === activeBoardId) || null;
+  const activeCard  = activeBoard?.cards?.find(c => c.id === activeCardId) || null;
 
+  const studyDeck = useMemo(() => {
+    if (!activeBoard) return [];
+    return (activeBoard.cards || [])
+      .filter(c => c.type === (boardTab === 'words' ? 'word' : 'phrase'))
+      .slice(0, Math.ceil((duration / 30) * 20 + 5)); // ~cards per session
+  }, [activeBoard, boardTab, duration]);
+
+  const studyCard = studyDeck[studyIdx] ?? null;
+
+  // ── Progress computed from real data ─────────────────────────────
+  const allCards = useMemo(() => boards.flatMap(b => b.cards || []), [boards]);
+  const levels = useMemo(() => [
+    { id: 'new',      label: 'Учу',     count: allCards.filter(c => c.level === 'new').length      },
+    { id: 'learning', label: 'Знакомо', count: allCards.filter(c => c.level === 'learning').length },
+    { id: 'know',     label: 'Знаю',    count: allCards.filter(c => c.level === 'know').length     },
+    { id: 'master',   label: 'Владею',  count: allCards.filter(c => c.level === 'master').length   },
+  ], [allCards]);
+
+  // ── Handlers ─────────────────────────────────────────────────────
   const goBack = () => {
-    if      (route === 'board')                              { setRoute('home');    setNavTab('boards'); }
-    else if (route === 'import' || route === 'new' || route === 'modepick') setRoute('board');
-    else if (route === 'study')                                setRoute('modepick');
-    else if (route === 'progress')                           { setRoute('home');    setNavTab('boards'); }
+    const map = {
+      board:    () => { setRoute('home');    setNavTab('boards'); },
+      import:   () => setRoute('board'),
+      new:      () => setRoute('board'),
+      newboard: () => setRoute('home'),
+      modepick: () => setRoute('board'),
+      study:    () => setRoute('modepick'),
+      carddetail:() => setRoute('board'),
+      progress: () => { setRoute('home');    setNavTab('boards'); },
+    };
+    (map[route] || (() => setRoute('home')))();
   };
 
   const onOpenBoard  = (id) => { setActiveBoardId(id); setRoute('board'); };
+  const onOpenCard   = (id) => { setActiveCardId(id);  setRoute('carddetail'); };
+
   const onStartStudy = () => {
+    if (!studyDeck.length) { showToast('Нет карточек для изучения'); return; }
     setStudyIdx(0); setStudyFlipped(false); setShowTrans(false); setShowEx(false);
-    setDictInput(''); setDictResult(null);
+    setDictInput(''); setDictResult(null); setChoiceResult(null); setSessionCards(0);
     setRoute('study');
   };
 
-  const onAnswer = (rating) => {
-    showToast(rating === 'easy' ? 'Через 4 дня' : rating === 'hard' ? 'Через 10 минут' : 'Снова в очереди');
-    advance();
-  };
-  const advance = () => {
+  const resetCard = () => {
     setStudyFlipped(false); setShowTrans(false); setShowEx(false);
-    setDictInput(''); setDictResult(null);
-    if (studyIdx + 1 >= studyDeck.length) {
-      showToast('Сессия завершена · ' + studyDeck.length + ' карточек');
-      setRoute('board'); setStudyIdx(0);
+    setDictInput(''); setDictResult(null); setChoiceResult(null);
+  };
+
+  const advance = (studied = true) => {
+    resetCard();
+    const next = studyIdx + 1;
+    if (studied) setSessionCards(n => n + 1);
+    if (next >= studyDeck.length) {
+      const count = sessionCards + (studied ? 1 : 0);
+      const s = recordStudySession(count);
+      setStreak(s);
+      showToast(`Сессия завершена · ${count} карточек`);
+      setRoute('board');
+      setStudyIdx(0);
     } else {
-      setStudyIdx(i => i + 1);
+      setStudyIdx(next);
     }
   };
 
+  const onAnswer = (rating) => {
+    // Update card level
+    const card = studyCard;
+    if (card && activeBoard) {
+      const levelMap = { easy: 'know', hard: 'learning', again: 'new' };
+      const nextLevel = { new: 'learning', learning: 'know', know: 'master', master: 'master' };
+      const newLevel  = rating === 'easy'
+        ? nextLevel[card.level] || 'know'
+        : rating === 'hard' ? 'learning' : 'new';
+
+      setBoards(bs => bs.map(b => b.id === activeBoard.id ? {
+        ...b,
+        cards: b.cards.map(c => c.id === card.id ? { ...c, level: newLevel } : c),
+      } : b));
+    }
+    const msgs = { easy: 'Легко — уровень повышен', hard: 'Сложно — повторим через 10 мин', again: 'Снова в очередь' };
+    showToast(msgs[rating]);
+    advance(true);
+  };
+
   const onCheckDictation = () => {
-    if (!dictInput.trim()) return;
+    if (!dictInput.trim() || !studyCard) return;
     const ok = dictInput.trim().toLowerCase() === studyCard.word.toLowerCase();
     setDictResult(ok ? 'correct' : 'wrong');
     if (ok) showToast('Правильно!');
+  };
+
+  const onChoicePick = (word) => {
+    if (!studyCard || choiceResult) return;
+    const ok = word === studyCard.word;
+    setChoiceResult(ok ? 'correct' : 'wrong');
+    setTimeout(() => advance(true), 700);
   };
 
   const onCopyPrompt = (id) => {
@@ -112,15 +238,16 @@ export default function App() {
   };
 
   const onAddImported = () => {
-    const id = activeBoard.id;
-    setBoards(bs => bs.map(b => b.id === id ? {
+    if (!activeBoard || !draft.length) return;
+    setBoards(bs => bs.map(b => b.id === activeBoard.id ? {
       ...b,
       total: b.total + draft.length,
       due:   b.due   + draft.length,
       cards: [
-        ...draft.map((d, i) => ({
-          id: `imp-${Date.now()}-${i}`, type: 'word', word: d.word,
-          definition: d.definition, translation: '', example: '', level: 'new',
+        ...draft.map(d => ({
+          id: uid(), type: 'word', word: d.word,
+          definition: d.definition, translation: d.translation || '',
+          example: d.example || '', level: 'new',
         })),
         ...(b.cards || []),
       ],
@@ -130,59 +257,157 @@ export default function App() {
   };
 
   const onSaveCard = () => {
-    if (!form.word || !form.definition) { showToast('Заполни обязательные поля'); return; }
-    const id = activeBoard.id;
-    setBoards(bs => bs.map(b => b.id === id ? {
+    if (!form.word.trim() || !form.definition.trim()) { showToast('Заполни слово и определение'); return; }
+    if (!activeBoard) return;
+    setBoards(bs => bs.map(b => b.id === activeBoard.id ? {
       ...b, total: b.total + 1, due: b.due + 1,
-      cards: [{
-        id: `new-${Date.now()}`, type: 'word', word: form.word,
-        definition: form.definition, translation: form.translation,
-        example: form.example, level: 'new',
-      }, ...(b.cards || [])],
+      cards: [{ id: uid(), type: 'word', word: form.word.trim(),
+        definition: form.definition.trim(), translation: form.translation.trim(),
+        example: form.example.trim(), level: 'new' }, ...(b.cards || [])],
     } : b));
     setForm({ word: '', definition: '', translation: '', example: '' });
     showToast('Карточка сохранена');
     setRoute('board');
   };
 
+  const onUpdateCard = (updated) => {
+    if (!activeBoard) return;
+    setBoards(bs => bs.map(b => b.id === activeBoard.id ? {
+      ...b,
+      cards: b.cards.map(c => c.id === updated.id ? updated : c),
+    } : b));
+    showToast('Карточка обновлена');
+    setRoute('board');
+  };
+
+  const onDeleteCard = (cardId) => {
+    if (!activeBoard) return;
+    setBoards(bs => bs.map(b => b.id === activeBoard.id ? {
+      ...b,
+      total: Math.max(0, b.total - 1),
+      cards: b.cards.filter(c => c.id !== cardId),
+    } : b));
+    showToast('Карточка удалена');
+    setRoute('board');
+  };
+
+  const onSaveBoard = () => {
+    if (!boardForm.name.trim()) { showToast('Введи название доски'); return; }
+    const newBoard = {
+      id: uid(), name: boardForm.name.trim(), color: boardForm.color,
+      total: 0, due: 0, done: 0, cards: [],
+    };
+    setBoards(bs => [newBoard, ...bs]);
+    setBoardForm({ name: '', color: '#d4f564' });
+    showToast('Доска создана');
+    setActiveBoardId(newBoard.id);
+    setRoute('board');
+  };
+
+  // Try to parse JSON when user pastes
+  useEffect(() => {
+    if (!pasted.trim()) { setDraft([]); return; }
+    try {
+      const parsed = JSON.parse(pasted);
+      if (Array.isArray(parsed)) {
+        setDraft(parsed.filter(d => d.word && d.definition).map(d => ({
+          word: String(d.word), definition: String(d.definition),
+          translation: d.translation ? String(d.translation) : '',
+          example:     d.example     ? String(d.example)     : '',
+        })));
+      }
+    } catch {
+      setDraft([]);
+    }
+  }, [pasted]);
+
+  // ── Screen routing ────────────────────────────────────────────────
   let screen = null;
+
   if (route === 'home') {
-    screen = <ScreenHome boards={boards} onOpenBoard={onOpenBoard} onAddBoard={() => showToast('Создание доски — soon')} />;
+    screen = <ScreenHome
+      boards={boards} streak={streak.count}
+      onOpenBoard={onOpenBoard}
+      onAddBoard={() => { setBoardForm({ name: '', color: '#d4f564' }); setRoute('newboard'); }}
+    />;
+  } else if (route === 'newboard') {
+    screen = <ScreenNewBoard
+      form={boardForm} onChange={(k, v) => setBoardForm(f => ({ ...f, [k]: v }))}
+      onSave={onSaveBoard} onBack={goBack}
+    />;
   } else if (route === 'board') {
-    screen = <ScreenBoard board={activeBoard} tab={boardTab} onBack={goBack}
-      onTab={setBoardTab} onStudy={() => setRoute('modepick')}
-      onImport={() => setRoute('import')} onAdd={() => setRoute('new')}
-      onOpenCard={() => showToast('Открытие карточки — soon')} />;
+    screen = <ScreenBoard
+      board={activeBoard} tab={boardTab} onBack={goBack}
+      onTab={setBoardTab} onStudy={() => {
+        if (!activeBoard?.cards?.length) { showToast('Добавь карточки чтобы начать'); return; }
+        setRoute('modepick');
+      }}
+      onImport={() => { setPasted(''); setDraft([]); setRoute('import'); }}
+      onAdd={() => { setForm({ word: '', definition: '', translation: '', example: '' }); setRoute('new'); }}
+      onOpenCard={onOpenCard}
+    />;
+  } else if (route === 'carddetail') {
+    screen = <ScreenCardDetail
+      card={activeCard} onBack={goBack}
+      onSave={onUpdateCard} onDelete={onDeleteCard}
+    />;
   } else if (route === 'import') {
-    screen = <ScreenImport pasted={pasted} onPaste={setPasted}
+    screen = <ScreenImport
+      pasted={pasted} onPaste={setPasted}
       draftCards={draft} onRemoveDraft={(i) => setDraft(d => d.filter((_, j) => j !== i))}
       onAdd={onAddImported} onBack={goBack}
-      copied={copied} onCopyPrompt={onCopyPrompt} />;
+      copied={copied} onCopyPrompt={onCopyPrompt}
+    />;
   } else if (route === 'new') {
-    screen = <ScreenNewCard form={form}
-      onChange={(k, v) => setForm(f => ({ ...f, [k]: v }))}
+    screen = <ScreenNewCard
+      form={form} onChange={(k, v) => setForm(f => ({ ...f, [k]: v }))}
       onSave={onSaveCard} onBack={goBack}
-      focus={focusField} onFocus={setFocusField} />;
+      focus={focusField} onFocus={setFocusField}
+    />;
   } else if (route === 'modepick') {
-    screen = <ScreenModePick board={activeBoard} duration={duration} mode={mode}
-      onDuration={setDuration} onMode={setMode} onStart={onStartStudy} onBack={goBack} />;
+    screen = <ScreenModePick
+      board={activeBoard} duration={duration} mode={mode}
+      onDuration={setDuration} onMode={setMode}
+      onStart={onStartStudy} onBack={goBack}
+    />;
   } else if (route === 'study') {
-    if (mode === 'dictation') {
-      screen = <ScreenDictation card={studyCard} idx={studyIdx} total={studyDeck.length}
+    if (!studyCard) {
+      // Должно быть защищено в onStartStudy, но на всякий случай
+      setRoute('board');
+    } else if (mode === 'dictation') {
+      screen = <ScreenDictation
+        card={studyCard} idx={studyIdx} total={studyDeck.length}
         input={dictInput} onInput={setDictInput} onCheck={onCheckDictation}
-        result={dictResult} onBack={goBack} onNext={advance} />;
-    } else if (!studyFlipped) {
-      screen = <ScreenStudyFront card={studyCard} idx={studyIdx} total={studyDeck.length}
-        onFlip={() => setStudyFlipped(true)} onBack={goBack} />;
+        result={dictResult} onBack={goBack} onNext={() => advance(true)}
+      />;
+    } else if (mode === 'choice') {
+      screen = <ScreenStudyChoice
+        card={studyCard} idx={studyIdx} total={studyDeck.length}
+        deck={studyDeck} result={choiceResult}
+        onPick={onChoicePick} onBack={goBack}
+      />;
     } else {
-      screen = <ScreenStudyBack card={studyCard} idx={studyIdx} total={studyDeck.length}
-        onAnswer={onAnswer} onBack={goBack}
-        showTrans={showTrans} showEx={showEx}
-        onToggleTrans={() => setShowTrans(v => !v)}
-        onToggleEx={() => setShowEx(v => !v)} />;
+      // classic
+      if (!studyFlipped) {
+        screen = <ScreenStudyFront
+          card={studyCard} idx={studyIdx} total={studyDeck.length}
+          onFlip={() => setStudyFlipped(true)} onBack={goBack}
+        />;
+      } else {
+        screen = <ScreenStudyBack
+          card={studyCard} idx={studyIdx} total={studyDeck.length}
+          onAnswer={onAnswer} onBack={goBack}
+          showTrans={showTrans} showEx={showEx}
+          onToggleTrans={() => setShowTrans(v => !v)}
+          onToggleEx={() => setShowEx(v => !v)}
+        />;
+      }
     }
   } else if (route === 'progress') {
-    screen = <ScreenProgress streak={7} days30={SAMPLE_DAYS30} weak={SAMPLE_WEAK} levels={SAMPLE_LEVELS} />;
+    screen = <ScreenProgress
+      streak={streak.count} days30={streak.days30}
+      levels={levels} allCards={allCards}
+    />;
   }
 
   const showNav = ['home', 'progress'].includes(route);
@@ -204,7 +429,6 @@ export default function App() {
 
       <Toast message={toast} visible={!!toast} />
 
-      {/* PWA: уведомление об обновлении */}
       {needRefresh && !updateDismissed && (
         <UpdateBanner
           onUpdate={() => updateServiceWorker(true)}
@@ -212,7 +436,6 @@ export default function App() {
         />
       )}
 
-      {/* PWA: предложение установить */}
       {canInstall && !installDismissed && !needRefresh && (
         <InstallBanner
           onInstall={triggerInstall}
