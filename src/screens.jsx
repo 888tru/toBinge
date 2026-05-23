@@ -42,7 +42,11 @@ export function ScreenHome({ boards = [], streak = 7, onOpenBoard, onAddBoard })
 }
 
 function BoardCard({ board, onClick }) {
-  const progress = Math.min(1, board.done / Math.max(1, board.total));
+  const today        = new Date().toISOString().slice(0, 10);
+  const cards        = board.cards || [];
+  const dueCount     = cards.filter(c => !c.dueDate || c.dueDate <= today).length;
+  const learnedCount = cards.filter(c => c.level === 'know' || c.level === 'master').length;
+  const progress     = cards.length > 0 ? learnedCount / cards.length : 0;
   return (
     <button onClick={onClick} style={{
       textAlign: 'left', cursor: 'pointer', position: 'relative',
@@ -52,7 +56,7 @@ function BoardCard({ board, onClick }) {
     }}>
       <div style={{ fontSize: 19, fontWeight: 600, letterSpacing: '-0.01em' }}>{board.name}</div>
       <div style={{ fontSize: 13, color: T.textDim }}>
-        {board.total} карточек · <span style={{ color: T.accent }}>{board.due} сегодня</span>
+        {cards.length} карточек · <span style={{ color: T.accent }}>{dueCount} сегодня</span>
       </div>
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 3, background: 'rgba(255,255,255,0.04)' }}>
         <div style={{ width: `${progress * 100}%`, height: '100%', background: board.color || T.accent }} />
@@ -67,6 +71,8 @@ function BoardCard({ board, onClick }) {
 export function ScreenBoard({ board, tab = 'words', onBack, onTab, onStudy, onImport, onAdd, onOpenCard, onDelete }) {
   const { useState: useS } = React;
   const [confirmDelete, setConfirmDelete] = useS(false);
+  const today       = new Date().toISOString().slice(0, 10);
+  const dueCount    = (board.cards || []).filter(c => !c.dueDate || c.dueDate <= today).length;
   const wordCount   = (board.cards || []).filter(c => c.type === 'word').length;
   const phraseCount = (board.cards || []).filter(c => c.type === 'phrase').length;
   return (
@@ -112,7 +118,7 @@ export function ScreenBoard({ board, tab = 'words', onBack, onTab, onStudy, onIm
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <div style={{ fontSize: 15, color: T.text, fontWeight: 500 }}>{board.due} на повторение</div>
+          <div style={{ fontSize: 15, color: T.text, fontWeight: 500 }}>{dueCount} на повторение</div>
           <div style={{ fontSize: 12, color: T.textDim }}>Готово к проработке</div>
         </div>
         <button onClick={onStudy} style={{
@@ -500,6 +506,11 @@ export function ScreenStudyFront({ card, idx, total, onFlip, onBack }) {
 // SCREEN 7 · STUDY BACK
 // ═══════════════════════════════════════════════════════════════
 export function ScreenStudyBack({ card, idx, total, onAnswer, onBack, showTrans, showEx, onToggleTrans, onToggleEx }) {
+  const interval   = card.interval   ?? 0;
+  const ef         = card.easeFactor ?? 2.5;
+  const hardI      = interval <= 1 ? 1 : Math.round(interval * 1.2);
+  const easyI      = interval === 0 ? 1 : interval === 1 ? 6 : Math.round(interval * ef);
+  const fmtI       = n => n === 1 ? '1 день' : n < 7 ? `${n} дн` : n < 30 ? `${Math.round(n / 7)} нед` : `${Math.round(n / 30)} мес`;
   return (
     <Shell withNav={false} padBottom={false}>
       <StudyHeader idx={idx} total={total} onBack={onBack} />
@@ -543,9 +554,9 @@ export function ScreenStudyBack({ card, idx, total, onAnswer, onBack, showTrans,
 
       <div style={{ flex: 1 }} />
       <div style={{ padding: '16px 20px', paddingBottom: HOME_IND + 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <AnswerButton color={T.red}    bg={T.redDim}    label="Снова"  sub="< 1 мин" onClick={() => onAnswer('again')} />
-        <AnswerButton color={T.orange} bg={T.orangeDim} label="Сложно" sub="10 мин"  onClick={() => onAnswer('hard')}  />
-        <AnswerButton color={T.green}  bg={T.accentDim} label="Легко"  sub="4 дня"   onClick={() => onAnswer('easy')}  />
+        <AnswerButton color={T.red}    bg={T.redDim}    label="Снова"  sub="1 день"      onClick={() => onAnswer('again')} />
+        <AnswerButton color={T.orange} bg={T.orangeDim} label="Сложно" sub={fmtI(hardI)} onClick={() => onAnswer('hard')}  />
+        <AnswerButton color={T.green}  bg={T.accentDim} label="Легко"  sub={fmtI(easyI)} onClick={() => onAnswer('easy')}  />
       </div>
     </Shell>
   );
@@ -628,7 +639,7 @@ export function ScreenDictation({ card, idx, total, input, onInput, onCheck, res
 // ═══════════════════════════════════════════════════════════════
 // SCREEN 9 · PROGRESS (real data)
 // ═══════════════════════════════════════════════════════════════
-export function ScreenProgress({ streak = 0, days30 = [], levels = [], allCards = [] }) {
+export function ScreenProgress({ streak = 0, bestStreak = 0, days30 = [], studyDates = [], levels = [], allCards = [], weakSpots = [] }) {
   const totalCards = allCards.length;
   const chart = days30.length ? days30 : Array(7).fill(0);
 
@@ -651,12 +662,21 @@ export function ScreenProgress({ streak = 0, days30 = [], levels = [], allCards 
               <div style={{ fontSize: 12, color: T.textDim }}>{streak ? 'Продолжай!' : 'Позанимайся сегодня'}</div>
             </div>
             <div style={{ flex: 1 }} />
+            {bestStreak > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, marginRight: 4 }}>
+                <div style={{ fontSize: 9, color: T.textFaint, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Рекорд</div>
+                <div style={{ fontSize: 20, fontWeight: 600, fontFamily: T.mono, color: T.textDim }}>{bestStreak}</div>
+              </div>
+            )}
             <div style={{ fontSize: 24 }}>{streak >= 3 ? '🔥' : '📚'}</div>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {Array.from({ length: 7 }).map((_, i) => {
-              const filled = i < Math.min(streak, 7);
-              const label  = ['П','В','С','Ч','П','С','В'][i];
+              const d        = new Date(Date.now() - (6 - i) * 86400000);
+              const dateStr  = d.toISOString().slice(0, 10);
+              const filled   = studyDates.includes(dateStr);
+              const dayNames = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+              const label    = dayNames[d.getDay()];
               return (
                 <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}>
                   <div style={{
@@ -729,6 +749,30 @@ export function ScreenProgress({ streak = 0, days30 = [], levels = [], allCards 
           }}>
             <div style={{ color: T.textFaint }}>{I.book(36)}</div>
             <div style={{ fontSize: 14, color: T.textDim }}>Добавь карточки, чтобы видеть статистику</div>
+          </div>
+        )}
+
+        {weakSpots.length > 0 && (
+          <div>
+            <Eyebrow style={{ marginBottom: 12 }}>Слабые места</Eyebrow>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {weakSpots.map(c => (
+                <div key={c.id} style={{
+                  padding: '12px 16px', background: T.surface1,
+                  border: `1px solid ${T.border}`, borderRadius: T.rSmall,
+                  display: 'flex', alignItems: 'center', gap: 10,
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: T.text }}>{c.word}</div>
+                    <div style={{ fontSize: 12, color: T.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.definition}</div>
+                  </div>
+                  <span style={{
+                    fontSize: 12, color: T.red, fontFamily: T.mono, fontWeight: 600,
+                    background: T.redDim, padding: '3px 8px', borderRadius: T.rPill, flexShrink: 0,
+                  }}>{c.lapses}×</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

@@ -3,6 +3,7 @@ import { T } from './tokens.js';
 import { CustomNav, Toast, HOME_IND } from './components.jsx';
 import { usePWA } from './usePWA.js';
 import { InstallBanner, UpdateBanner } from './PWABanners.jsx';
+import { sm2, levenshtein } from './sm2.js';
 import {
   ScreenHome, ScreenBoard, ScreenImport, ScreenNewCard, ScreenCardDetail,
   ScreenNewBoard, ScreenModePick, ScreenStudyFront, ScreenStudyBack,
@@ -23,28 +24,59 @@ function saveBoards(boards) {
 }
 
 // ── Streak tracking ──────────────────────────────────────────────
+const STREAK_DEFAULTS = { count: 0, bestStreak: 0, lastDate: null, days30: [], studyDates: [], freezeUsedWeek: null };
+
+function getISOWeek(dateStr) {
+  const d = new Date(dateStr);
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return `${d.getUTCFullYear()}-W${String(Math.ceil((((d - yearStart) / 86400000) + 1) / 7)).padStart(2, '0')}`;
+}
+
 function loadStreak() {
   try {
-    return JSON.parse(localStorage.getItem('tobinge-streak') || '{"count":0,"lastDate":null,"days30":[]}');
+    const raw = localStorage.getItem('tobinge-streak');
+    return { ...STREAK_DEFAULTS, ...(raw ? JSON.parse(raw) : {}) };
   } catch {
-    return { count: 0, lastDate: null, days30: [] };
+    return { ...STREAK_DEFAULTS };
   }
 }
-function recordStudySession(cardsStudied) {
-  const today = new Date().toISOString().slice(0, 10);
-  const prev  = loadStreak();
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
-  let count = prev.count;
+function recordStudySession(cardsStudied) {
+  const today       = new Date().toISOString().slice(0, 10);
+  const yesterday   = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const currentWeek = getISOWeek(today);
+  const prev        = loadStreak();
+
+  let count          = prev.count || 0;
+  let freezeUsedWeek = prev.freezeUsedWeek || null;
+
   if (prev.lastDate === today) {
-    // уже занимался сегодня — просто обновляем количество
+    // already studied today — count unchanged
   } else if (prev.lastDate === yesterday) {
     count += 1;
   } else {
-    count = 1;
+    const gapDays = prev.lastDate
+      ? Math.round((new Date(today) - new Date(prev.lastDate)) / 86400000)
+      : 999;
+    if (gapDays === 2 && freezeUsedWeek !== currentWeek) {
+      count += 1;                   // streak freeze: 1 missed day allowed per week
+      freezeUsedWeek = currentWeek;
+    } else {
+      count = 1;
+    }
   }
 
-  // 30-дневный массив: последний элемент = сегодня
+  const bestStreak = Math.max(count, prev.bestStreak || 0);
+
+  // Study dates (keep 90 days)
+  const studyDates = [...(prev.studyDates || [])];
+  if (!studyDates.includes(today)) studyDates.push(today);
+  const cutoff = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+  const filteredDates = studyDates.filter(d => d >= cutoff);
+
+  // 30-day bar chart array
   const days30 = [...(prev.days30 || [])];
   if (prev.lastDate === today) {
     days30[days30.length - 1] = (days30[days30.length - 1] || 0) + cardsStudied;
@@ -57,7 +89,7 @@ function recordStudySession(cardsStudied) {
     if (days30.length > 30) days30.splice(0, days30.length - 30);
   }
 
-  const next = { count, lastDate: today, days30 };
+  const next = { count, bestStreak, lastDate: today, days30, studyDates: filteredDates, freezeUsedWeek };
   localStorage.setItem('tobinge-streak', JSON.stringify(next));
   return next;
 }
@@ -96,8 +128,9 @@ export default function App() {
   const [boardForm, setBoardForm] = useState({ name: '', color: '#d4f564' });
 
   // ── Study setup ──────────────────────────────────────────────────
-  const [duration, setDuration] = useState(15);
-  const [mode,     setMode]     = useState('classic');
+  const [duration,     setDuration]     = useState(15);
+  const [mode,         setMode]         = useState('classic');
+  const [sessionDeck,  setSessionDeck]  = useState([]);
 
   // ── Study runtime ────────────────────────────────────────────────
   const [studyIdx,     setStudyIdx]     = useState(0);
@@ -135,21 +168,30 @@ export default function App() {
 
   const studyDeck = useMemo(() => {
     if (!activeBoard) return [];
-    return (activeBoard.cards || [])
-      .filter(c => c.type === (boardTab === 'words' ? 'word' : 'phrase'))
-      .slice(0, Math.ceil((duration / 30) * 20 + 5)); // ~cards per session
+    const today      = new Date().toISOString().slice(0, 10);
+    const typeFilter = boardTab === 'words' ? 'word' : 'phrase';
+    const cards      = (activeBoard.cards || []).filter(c => c.type === typeFilter);
+    const due        = cards.filter(c => !c.dueDate || c.dueDate <= today);
+    const fresh      = cards.filter(c => c.dueDate  && c.dueDate >  today);
+    const limit      = Math.ceil((duration / 30) * 20 + 5);
+    return [...due, ...fresh].slice(0, limit);
   }, [activeBoard, boardTab, duration]);
 
-  const studyCard = studyDeck[studyIdx] ?? null;
+  const studyCard = sessionDeck[studyIdx] ?? null;
 
   // ── Progress computed from real data ─────────────────────────────
   const allCards = useMemo(() => boards.flatMap(b => b.cards || []), [boards]);
   const levels = useMemo(() => [
-    { id: 'new',      label: 'Учу',     count: allCards.filter(c => c.level === 'new').length      },
+    { id: 'new',      label: 'Учу',     count: allCards.filter(c => c.level === 'new'      || !c.level).length },
     { id: 'learning', label: 'Знакомо', count: allCards.filter(c => c.level === 'learning').length },
     { id: 'know',     label: 'Знаю',    count: allCards.filter(c => c.level === 'know').length     },
     { id: 'master',   label: 'Владею',  count: allCards.filter(c => c.level === 'master').length   },
   ], [allCards]);
+  const weakSpots = useMemo(() =>
+    allCards.filter(c => (c.lapses || 0) > 0)
+      .sort((a, b) => (b.lapses || 0) - (a.lapses || 0))
+      .slice(0, 5),
+  [allCards]);
 
   // ── Handlers ─────────────────────────────────────────────────────
   const goBack = () => {
@@ -171,6 +213,7 @@ export default function App() {
 
   const onStartStudy = () => {
     if (!studyDeck.length) { showToast('Нет карточек для изучения'); return; }
+    setSessionDeck([...studyDeck]);
     setStudyIdx(0); setStudyFlipped(false); setShowTrans(false); setShowEx(false);
     setDictInput(''); setDictResult(null); setChoiceResult(null); setSessionCards(0);
     setRoute('study');
@@ -198,29 +241,30 @@ export default function App() {
   };
 
   const onAnswer = (rating) => {
-    // Update card level
     const card = studyCard;
     if (card && activeBoard) {
-      const levelMap = { easy: 'know', hard: 'learning', again: 'new' };
-      const nextLevel = { new: 'learning', learning: 'know', know: 'master', master: 'master' };
-      const newLevel  = rating === 'easy'
-        ? nextLevel[card.level] || 'know'
-        : rating === 'hard' ? 'learning' : 'new';
-
+      const updated = sm2(card, rating);
       setBoards(bs => bs.map(b => b.id === activeBoard.id ? {
-        ...b,
-        cards: b.cards.map(c => c.id === card.id ? { ...c, level: newLevel } : c),
+        ...b, cards: b.cards.map(c => c.id === card.id ? updated : c),
       } : b));
     }
-    const msgs = { easy: 'Легко — уровень повышен', hard: 'Сложно — повторим через 10 мин', again: 'Снова в очередь' };
+    const msgs = { easy: 'Легко!', hard: 'Сложно — повторим позже', again: 'Снова в очередь' };
     showToast(msgs[rating]);
     advance(true);
   };
 
   const onCheckDictation = () => {
     if (!dictInput.trim() || !studyCard) return;
-    const ok = dictInput.trim().toLowerCase() === studyCard.word.toLowerCase();
+    const a  = dictInput.trim().toLowerCase();
+    const b  = studyCard.word.toLowerCase();
+    const ok = a === b || levenshtein(a, b) <= 1;
     setDictResult(ok ? 'correct' : 'wrong');
+    if (activeBoard) {
+      const updated = sm2(studyCard, ok ? 'easy' : 'again');
+      setBoards(bs => bs.map(board => board.id === activeBoard.id ? {
+        ...board, cards: board.cards.map(c => c.id === studyCard.id ? updated : c),
+      } : board));
+    }
     if (ok) showToast('Правильно!');
   };
 
@@ -228,6 +272,12 @@ export default function App() {
     if (!studyCard || choiceResult) return;
     const ok = definition === studyCard.definition;
     setChoiceResult(ok ? 'correct' : 'wrong');
+    if (activeBoard) {
+      const updated = sm2(studyCard, ok ? 'easy' : 'again');
+      setBoards(bs => bs.map(board => board.id === activeBoard.id ? {
+        ...board, cards: board.cards.map(c => c.id === studyCard.id ? updated : c),
+      } : board));
+    }
     setTimeout(() => advance(true), 700);
   };
 
@@ -392,26 +442,26 @@ export default function App() {
       setRoute('board');
     } else if (mode === 'dictation') {
       screen = <ScreenDictation
-        card={studyCard} idx={studyIdx} total={studyDeck.length}
+        card={studyCard} idx={studyIdx} total={sessionDeck.length}
         input={dictInput} onInput={setDictInput} onCheck={onCheckDictation}
         result={dictResult} onBack={goBack} onNext={() => advance(true)}
       />;
     } else if (mode === 'choice') {
       screen = <ScreenStudyChoice
-        card={studyCard} idx={studyIdx} total={studyDeck.length}
-        deck={studyDeck} result={choiceResult}
+        card={studyCard} idx={studyIdx} total={sessionDeck.length}
+        deck={sessionDeck} result={choiceResult}
         onPick={onChoicePick} onBack={goBack}
       />;
     } else {
       // classic
       if (!studyFlipped) {
         screen = <ScreenStudyFront
-          card={studyCard} idx={studyIdx} total={studyDeck.length}
+          card={studyCard} idx={studyIdx} total={sessionDeck.length}
           onFlip={() => setStudyFlipped(true)} onBack={goBack}
         />;
       } else {
         screen = <ScreenStudyBack
-          card={studyCard} idx={studyIdx} total={studyDeck.length}
+          card={studyCard} idx={studyIdx} total={sessionDeck.length}
           onAnswer={onAnswer} onBack={goBack}
           showTrans={showTrans} showEx={showEx}
           onToggleTrans={() => setShowTrans(v => !v)}
@@ -421,8 +471,9 @@ export default function App() {
     }
   } else if (route === 'progress') {
     screen = <ScreenProgress
-      streak={streak.count} days30={streak.days30}
-      levels={levels} allCards={allCards}
+      streak={streak.count} bestStreak={streak.bestStreak || 0}
+      days30={streak.days30} studyDates={streak.studyDates || []}
+      levels={levels} allCards={allCards} weakSpots={weakSpots}
     />;
   }
 
