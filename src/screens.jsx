@@ -64,12 +64,23 @@ function BoardCard({ board, onClick }) {
 // ═══════════════════════════════════════════════════════════════
 // SCREEN 2 · BOARD INTERIOR
 // ═══════════════════════════════════════════════════════════════
-export function ScreenBoard({ board, tab = 'words', onBack, onTab, onStudy, onImport, onAdd, onOpenCard }) {
+export function ScreenBoard({ board, tab = 'words', onBack, onTab, onStudy, onImport, onAdd, onOpenCard, onDelete }) {
+  const { useState: useS } = React;
+  const [confirmDelete, setConfirmDelete] = useS(false);
   const wordCount   = (board.cards || []).filter(c => c.type === 'word').length;
   const phraseCount = (board.cards || []).filter(c => c.type === 'phrase').length;
   return (
     <Shell>
-      <Header back onBack={onBack} title={board.name} trailing={<PlusButton onClick={onAdd} />} />
+      <Header back onBack={onBack} title={board.name} trailing={
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setConfirmDelete(true)} style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: 'transparent', border: `1px solid ${T.border}`,
+            color: T.red, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+          }}>{I.trash(16, T.red)}</button>
+          <PlusButton onClick={onAdd} />
+        </div>
+      } />
 
       {/* tabs */}
       <div style={{ display: 'flex', gap: 24, padding: '0 20px', borderBottom: `1px solid ${T.border}` }}>
@@ -139,6 +150,36 @@ export function ScreenBoard({ board, tab = 'words', onBack, onTab, onStudy, onIm
             </button>
           ))}
       </div>
+
+      {/* confirm delete board overlay */}
+      {confirmDelete && (
+        <div style={{
+          position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'flex-end', zIndex: 60,
+        }}>
+          <div style={{
+            width: '100%', background: T.surface1,
+            borderRadius: `${T.rCard}px ${T.rCard}px 0 0`,
+            padding: '24px 20px', paddingBottom: HOME_IND + 20,
+            display: 'flex', flexDirection: 'column', gap: 12,
+          }}>
+            <div style={{ fontSize: 16, fontWeight: 600, color: T.text }}>Удалить доску?</div>
+            <div style={{ fontSize: 13, color: T.textDim }}>«{board.name}» и все {(board.cards || []).length} карточек будут удалены. Это нельзя отменить.</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+              <button onClick={onDelete} style={{
+                padding: '14px', borderRadius: T.rPill,
+                background: T.red, color: '#fff', border: 0,
+                fontFamily: T.sans, fontSize: 15, fontWeight: 600, cursor: 'pointer',
+              }}>Удалить</button>
+              <button onClick={() => setConfirmDelete(false)} style={{
+                padding: '14px', borderRadius: T.rPill,
+                background: T.surface2, color: T.text, border: 0,
+                fontFamily: T.sans, fontSize: 15, fontWeight: 500, cursor: 'pointer',
+              }}>Отмена</button>
+            </div>
+          </div>
+        </div>
+      )}
     </Shell>
   );
 }
@@ -147,6 +188,17 @@ export function ScreenBoard({ board, tab = 'words', onBack, onTab, onStudy, onIm
 // SCREEN 3 · IMPORT
 // ═══════════════════════════════════════════════════════════════
 export function ScreenImport({ pasted, onPaste, draftCards = [], onRemoveDraft, onAdd, onBack, copied, onCopyPrompt }) {
+  const fileRef = React.useRef(null);
+
+  const handleFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => onPaste?.(ev.target.result);
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   return (
     <Shell withNav={false}>
       <Header back onBack={onBack} title="Импорт" />
@@ -176,15 +228,17 @@ export function ScreenImport({ pasted, onPaste, draftCards = [], onRemoveDraft, 
           })}
         </div>
 
-        <div style={{
+        <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleFile} />
+        <button onClick={() => fileRef.current?.click()} style={{
           border: `1.5px dashed ${T.borderStrong}`, borderRadius: T.rCard,
           padding: '32px 20px', display: 'flex', flexDirection: 'column',
           alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.015)',
+          cursor: 'pointer', width: '100%',
         }}>
           <span style={{ color: T.textDim }}>{I.upload(28, T.textDim)}</span>
           <div style={{ fontSize: 14, color: T.text, fontWeight: 500 }}>Загрузи JSON файл</div>
           <div style={{ fontSize: 12, color: T.textDim }}>или вставь текст ниже</div>
-        </div>
+        </button>
 
         <textarea
           value={pasted || ''}
@@ -461,23 +515,29 @@ export function ScreenStudyBack({ card, idx, total, onAnswer, onBack, showTrans,
           </div>
           <div style={{ fontSize: 16, color: T.text, lineHeight: 1.45 }}>{card.definition}</div>
 
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <ExpandPill icon={I.globe}  label="Перевод" open={showTrans} onClick={onToggleTrans} />
-            <ExpandPill icon={I.bookSm} label="Пример"  open={showEx}    onClick={onToggleEx}   />
-          </div>
+          {(card.translation || card.example) && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {card.translation && <ExpandPill icon={I.globe}  label="Перевод" open={showTrans} onClick={onToggleTrans} />}
+              {card.example    && <ExpandPill icon={I.bookSm} label="Пример"  open={showEx}    onClick={onToggleEx}   />}
+            </div>
+          )}
 
-          <Reveal open={showTrans}>
-            <div style={{ paddingTop: 4 }}>
-              <Eyebrow color={T.accent} style={{ marginBottom: 6 }}>перевод</Eyebrow>
-              <div style={{ fontSize: 15, color: T.text }}>{card.translation}</div>
-            </div>
-          </Reveal>
-          <Reveal open={showEx}>
-            <div style={{ paddingTop: 4 }}>
-              <Eyebrow color={T.accent} style={{ marginBottom: 6 }}>пример</Eyebrow>
-              <div style={{ fontSize: 14, color: T.text, fontStyle: 'italic', lineHeight: 1.5 }}>"{card.example}"</div>
-            </div>
-          </Reveal>
+          {card.translation && (
+            <Reveal open={showTrans}>
+              <div style={{ paddingTop: 4 }}>
+                <Eyebrow color={T.accent} style={{ marginBottom: 6 }}>перевод</Eyebrow>
+                <div style={{ fontSize: 15, color: T.text }}>{card.translation}</div>
+              </div>
+            </Reveal>
+          )}
+          {card.example && (
+            <Reveal open={showEx}>
+              <div style={{ paddingTop: 4 }}>
+                <Eyebrow color={T.accent} style={{ marginBottom: 6 }}>пример</Eyebrow>
+                <div style={{ fontSize: 14, color: T.text, fontStyle: 'italic', lineHeight: 1.5 }}>"{card.example}"</div>
+              </div>
+            </Reveal>
+          )}
         </div>
       </div>
 
@@ -509,10 +569,12 @@ export function ScreenDictation({ card, idx, total, input, onInput, onCheck, res
         }}>
           <Eyebrow color={T.textFaint}>определение</Eyebrow>
           <div style={{ fontSize: 16, color: T.text, lineHeight: 1.45 }}>{card.definition}</div>
-          <div style={{ paddingTop: 14, borderTop: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <Eyebrow color={T.textFaint}>перевод</Eyebrow>
-            <div style={{ fontSize: 15, color: T.text }}>{card.translation}</div>
-          </div>
+          {card.translation && (
+            <div style={{ paddingTop: 14, borderTop: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <Eyebrow color={T.textFaint}>перевод</Eyebrow>
+              <div style={{ fontSize: 15, color: T.text }}>{card.translation}</div>
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -863,15 +925,15 @@ export function ScreenCardDetail({ card, onBack, onSave, onDelete }) {
 // SCREEN 12 · STUDY CHOICE (4 варианта)
 // ═══════════════════════════════════════════════════════════════
 export function ScreenStudyChoice({ card, idx, total, deck, result, onPick, onBack }) {
-  const { useMemo, useState: useS } = React;
+  const { useMemo } = React;
 
   const choices = useMemo(() => {
     const others = deck
       .filter(c => c.id !== card.id)
       .sort(() => Math.random() - 0.5)
       .slice(0, 3)
-      .map(c => c.word);
-    const all = [...others, card.word];
+      .map(c => c.definition);
+    const all = [...others, card.definition];
     // Fisher-Yates shuffle
     for (let i = all.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -881,11 +943,10 @@ export function ScreenStudyChoice({ card, idx, total, deck, result, onPick, onBa
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card.id]);
 
-  const getChoiceStyle = (word) => {
+  const getChoiceStyle = (def) => {
     if (!result) return { border: `1.5px solid ${T.border}`, background: T.surface1, color: T.text };
-    if (word === card.word) return { border: `1.5px solid ${T.green}`, background: T.accentDim, color: T.text };
-    if (result === 'wrong') return { border: `1.5px solid ${T.border}`, background: T.surface1, color: T.textDim };
-    return { border: `1.5px solid ${T.border}`, background: T.surface1, color: T.text };
+    if (def === card.definition) return { border: `1.5px solid ${T.green}`, background: T.accentDim, color: T.text };
+    return { border: `1.5px solid ${T.border}`, background: T.surface1, color: T.textDim };
   };
 
   return (
@@ -893,35 +954,30 @@ export function ScreenStudyChoice({ card, idx, total, deck, result, onPick, onBa
       <StudyHeader idx={idx} total={total} onBack={onBack} />
 
       <div style={{ padding: '16px 20px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* definition card */}
+        {/* word card */}
         <div style={{
           background: T.surface1, border: `1px solid ${T.border}`, borderRadius: T.rCard,
-          padding: '24px 22px', display: 'flex', flexDirection: 'column', gap: 12,
+          padding: '32px 22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
         }}>
-          <Eyebrow color={T.accent}>выбери слово</Eyebrow>
-          <div style={{ fontSize: 16, color: T.text, lineHeight: 1.45 }}>{card.definition}</div>
-          {card.translation && (
-            <div style={{ fontSize: 13, color: T.textDim, paddingTop: 6, borderTop: `1px solid ${T.border}` }}>
-              {card.translation}
-            </div>
-          )}
+          <Eyebrow color={T.accent}>выбери определение</Eyebrow>
+          <div style={{ fontSize: 34, fontWeight: 700, color: T.text, letterSpacing: '-0.02em', textAlign: 'center' }}>{card.word}</div>
         </div>
 
         {/* 4 choices */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {choices.map(word => (
-            <button key={word} onClick={() => onPick(word)} disabled={!!result} style={{
-              ...getChoiceStyle(word),
-              padding: '16px 20px', borderRadius: T.rPill,
-              fontFamily: T.sans, fontSize: 15, fontWeight: 500,
+          {choices.map((def, i) => (
+            <button key={i} onClick={() => onPick(def)} disabled={!!result} style={{
+              ...getChoiceStyle(def),
+              padding: '14px 18px', borderRadius: T.rCard,
+              fontFamily: T.sans, fontSize: 14, lineHeight: 1.4,
               cursor: result ? 'default' : 'pointer', textAlign: 'left',
               transition: 'background .2s, border-color .2s',
-              display: 'flex', alignItems: 'center', gap: 10,
+              display: 'flex', alignItems: 'flex-start', gap: 10,
             }}>
-              {result && word === card.word && (
-                <span style={{ color: T.green, flexShrink: 0 }}>{I.check(16, T.green)}</span>
+              {result && def === card.definition && (
+                <span style={{ color: T.green, flexShrink: 0, marginTop: 1 }}>{I.check(14, T.green)}</span>
               )}
-              {word}
+              {def}
             </button>
           ))}
         </div>

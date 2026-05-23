@@ -224,16 +224,22 @@ export default function App() {
     if (ok) showToast('Правильно!');
   };
 
-  const onChoicePick = (word) => {
+  const onChoicePick = (definition) => {
     if (!studyCard || choiceResult) return;
-    const ok = word === studyCard.word;
+    const ok = definition === studyCard.definition;
     setChoiceResult(ok ? 'correct' : 'wrong');
     setTimeout(() => advance(true), 700);
   };
 
+  const PROMPTS = {
+    words:   'Создай 20 английских слов для изучения. Ответь строго в JSON:\n[{"word":"...","definition":"definition in English","translation":"перевод на русский","example":"example sentence"}]',
+    phrases: 'Создай 20 английских выражений и фраз. Ответь строго в JSON:\n[{"word":"the phrase","definition":"meaning in English","translation":"перевод на русский","example":"example sentence"}]',
+  };
+
   const onCopyPrompt = (id) => {
+    navigator.clipboard.writeText(PROMPTS[id] || '').catch(() => {});
     setCopied(id);
-    showToast(id === 'words' ? 'Промт для слов скопирован' : 'Промт для выражений скопирован');
+    showToast('Промт скопирован');
     setTimeout(() => setCopied(null), 1600);
   };
 
@@ -259,9 +265,10 @@ export default function App() {
   const onSaveCard = () => {
     if (!form.word.trim() || !form.definition.trim()) { showToast('Заполни слово и определение'); return; }
     if (!activeBoard) return;
+    const cardType = boardTab === 'phrases' ? 'phrase' : 'word';
     setBoards(bs => bs.map(b => b.id === activeBoard.id ? {
       ...b, total: b.total + 1, due: b.due + 1,
-      cards: [{ id: uid(), type: 'word', word: form.word.trim(),
+      cards: [{ id: uid(), type: cardType, word: form.word.trim(),
         definition: form.definition.trim(), translation: form.translation.trim(),
         example: form.example.trim(), level: 'new' }, ...(b.cards || [])],
     } : b));
@@ -289,6 +296,14 @@ export default function App() {
     } : b));
     showToast('Карточка удалена');
     setRoute('board');
+  };
+
+  const onDeleteBoard = (boardId) => {
+    setBoards(bs => bs.filter(b => b.id !== boardId));
+    showToast('Доска удалена');
+    setActiveBoardId(null);
+    setRoute('home');
+    setNavTab('boards');
   };
 
   const onSaveBoard = () => {
@@ -345,6 +360,7 @@ export default function App() {
       onImport={() => { setPasted(''); setDraft([]); setRoute('import'); }}
       onAdd={() => { setForm({ word: '', definition: '', translation: '', example: '' }); setRoute('new'); }}
       onOpenCard={onOpenCard}
+      onDelete={() => onDeleteBoard(activeBoardId)}
     />;
   } else if (route === 'carddetail') {
     screen = <ScreenCardDetail
