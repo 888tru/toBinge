@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { T } from './tokens.js';
-import { CustomNav, Toast, HOME_IND } from './components.jsx';
+import { CustomNav, Toast } from './components.jsx';
 import { usePWA } from './usePWA.js';
 import { InstallBanner, UpdateBanner } from './PWABanners.jsx';
 import { sm2, levenshtein } from './sm2.js';
@@ -484,17 +484,15 @@ export default function App() {
       width: '100%', maxWidth: 430,
       height: '100dvh',
       paddingTop: 'env(safe-area-inset-top)',
+      paddingBottom: 'env(safe-area-inset-bottom)',
       boxSizing: 'border-box',
+      display: 'flex', flexDirection: 'column',
       position: 'relative', overflow: 'hidden',
       background: T.bg,
     }}>
       {screen}
 
-      {showNav && (
-        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 35 }}>
-          <CustomNav active={navTab} onChange={setNavTab} />
-        </div>
-      )}
+      {showNav && <CustomNav active={navTab} onChange={setNavTab} />}
 
       <Toast message={toast} visible={!!toast} />
 

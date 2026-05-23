@@ -3,7 +3,6 @@ import { T } from './tokens.js';
 import { I } from './icons.jsx';
 import {
   Shell, Header, PlusButton, Eyebrow,
-  SHELL_TOP, NAV_HEIGHT, HOME_IND,
   Reveal, ExpandPill, AnswerButton, levelColor,
 } from './components.jsx';
 
@@ -166,7 +165,7 @@ export function ScreenBoard({ board, tab = 'words', onBack, onTab, onStudy, onIm
           <div style={{
             width: '100%', background: T.surface1,
             borderRadius: `${T.rCard}px ${T.rCard}px 0 0`,
-            padding: '24px 20px', paddingBottom: HOME_IND + 20,
+            padding: '24px 20px', paddingBottom: 20,
             display: 'flex', flexDirection: 'column', gap: 12,
           }}>
             <div style={{ fontSize: 16, fontWeight: 600, color: T.text }}>Удалить доску?</div>
@@ -285,7 +284,7 @@ export function ScreenImport({ pasted, onPaste, draftCards = [], onRemoveDraft, 
       <div style={{ height: 90 }} />
       <div style={{
         position: 'absolute', left: 0, right: 0, bottom: 0,
-        padding: '14px 20px', paddingBottom: HOME_IND + 14,
+        padding: '14px 20px', paddingBottom: 14,
         background: 'linear-gradient(to top, #0f0f0f 60%, rgba(15,15,15,0))',
       }}>
         <button onClick={onAdd} disabled={draftCards.length === 0} style={{
@@ -359,7 +358,7 @@ export function ScreenNewCard({ form, onChange, onSave, onBack, focus, onFocus }
       <div style={{ flex: 1 }} />
       <div style={{
         position: 'absolute', left: 0, right: 0, bottom: 0,
-        padding: '14px 20px', paddingBottom: HOME_IND + 14,
+        padding: '14px 20px', paddingBottom: 14,
         background: 'linear-gradient(to top, #0f0f0f 60%, rgba(15,15,15,0))',
       }}>
         <button onClick={onSave} style={{
@@ -429,7 +428,7 @@ export function ScreenModePick({ board, duration, mode, onDuration, onMode, onSt
       <div style={{ flex: 1 }} />
       <div style={{
         position: 'absolute', left: 0, right: 0, bottom: 0,
-        padding: '14px 20px', paddingBottom: HOME_IND + 14,
+        padding: '14px 20px', paddingBottom: 14,
         background: 'linear-gradient(to top, #0f0f0f 60%, rgba(15,15,15,0))',
       }}>
         <button onClick={onStart} style={{
@@ -497,7 +496,7 @@ export function ScreenStudyFront({ card, idx, total, onFlip, onBack }) {
         </button>
         <div style={{ flex: 1 }} />
       </div>
-      <div style={{ height: HOME_IND + 8 }} />
+      <div style={{ height: 8 }} />
     </Shell>
   );
 }
@@ -553,7 +552,7 @@ export function ScreenStudyBack({ card, idx, total, onAnswer, onBack, showTrans,
       </div>
 
       <div style={{ flex: 1 }} />
-      <div style={{ padding: '16px 20px', paddingBottom: HOME_IND + 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ padding: '16px 20px', paddingBottom: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <AnswerButton color={T.red}    bg={T.redDim}    label="Снова"  sub="1 день"      onClick={() => onAnswer('again')} />
         <AnswerButton color={T.orange} bg={T.orangeDim} label="Сложно" sub={fmtI(hardI)} onClick={() => onAnswer('hard')}  />
         <AnswerButton color={T.green}  bg={T.accentDim} label="Легко"  sub={fmtI(easyI)} onClick={() => onAnswer('easy')}  />
@@ -614,7 +613,7 @@ export function ScreenDictation({ card, idx, total, input, onInput, onCheck, res
       </div>
 
       <div style={{ flex: 1 }} />
-      <div style={{ padding: '14px 20px', paddingBottom: HOME_IND + 12 }}>
+      <div style={{ padding: '14px 20px', paddingBottom: 12 }}>
         {result ? (
           <button onClick={onNext} style={{
             width: '100%', padding: '16px', borderRadius: T.rPill,
@@ -840,7 +839,7 @@ export function ScreenNewBoard({ form, onChange, onSave, onBack }) {
 
       <div style={{
         position: 'absolute', left: 0, right: 0, bottom: 0,
-        padding: '14px 20px', paddingBottom: HOME_IND + 14,
+        padding: '14px 20px', paddingBottom: 14,
         background: 'linear-gradient(to top, #0f0f0f 60%, rgba(15,15,15,0))',
       }}>
         <button onClick={onSave} disabled={!form.name?.trim()} style={{
@@ -929,7 +928,7 @@ export function ScreenCardDetail({ card, onBack, onSave, onDelete }) {
           <div style={{
             width: '100%', background: T.surface1,
             borderRadius: `${T.rCard}px ${T.rCard}px 0 0`,
-            padding: '24px 20px', paddingBottom: HOME_IND + 20,
+            padding: '24px 20px', paddingBottom: 20,
             display: 'flex', flexDirection: 'column', gap: 12,
           }}>
             <div style={{ fontSize: 16, fontWeight: 600, color: T.text }}>Удалить карточку?</div>
@@ -952,7 +951,7 @@ export function ScreenCardDetail({ card, onBack, onSave, onDelete }) {
 
       <div style={{
         position: 'absolute', left: 0, right: 0, bottom: 0,
-        padding: '14px 20px', paddingBottom: HOME_IND + 14,
+        padding: '14px 20px', paddingBottom: 14,
         background: 'linear-gradient(to top, #0f0f0f 60%, rgba(15,15,15,0))',
       }}>
         <button onClick={() => onSave(form)} style={{
@@ -1027,7 +1026,7 @@ export function ScreenStudyChoice({ card, idx, total, deck, result, onPick, onBa
         </div>
       </div>
 
-      <div style={{ height: HOME_IND + 12 }} />
+      <div style={{ height: 12 }} />
     </Shell>
   );
 }

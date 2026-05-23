@@ -20,16 +20,14 @@ export function Eyebrow({ children, color, style }) {
 export function Shell({ children, withNav = true, padBottom = true, style }) {
   return (
     <div style={{
-      width: '100%', height: '100%', background: T.bg, color: T.text,
+      width: '100%', flex: 1, background: T.bg, color: T.text,
       fontFamily: T.sans, display: 'flex', flexDirection: 'column',
-      paddingTop: SHELL_TOP, position: 'relative', overflow: 'hidden',
+      position: 'relative', overflow: 'hidden',
       ...style,
     }}>
       <div style={{
         flex: 1, overflowY: 'auto', overflowX: 'hidden',
-        paddingBottom: padBottom
-          ? (withNav ? NAV_HEIGHT + HOME_IND + 4 : HOME_IND + 8)
-          : 0,
+        paddingBottom: padBottom ? 8 : 0,
       }}>
         {children}
       </div>
@@ -81,7 +79,7 @@ export function CustomNav({ active, onChange }) {
   ];
   return (
     <div style={{
-      height: NAV_HEIGHT + HOME_IND, paddingBottom: HOME_IND,
+      height: NAV_HEIGHT, flexShrink: 0,
       background: 'rgba(15,15,15,0.92)',
       backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
       borderTop: `1px solid ${T.border}`,
@@ -151,7 +149,7 @@ export function Toast({ message, visible }) {
   return (
     <div style={{
       position: 'absolute', left: 20, right: 20,
-      bottom: visible ? NAV_HEIGHT + HOME_IND + 8 : -60,
+      bottom: visible ? NAV_HEIGHT + 8 : -60,
       padding: '12px 16px', borderRadius: T.rPill,
       background: T.surface2, border: `1px solid ${T.borderStrong}`,
       color: T.text, fontFamily: T.sans, fontSize: 13,
